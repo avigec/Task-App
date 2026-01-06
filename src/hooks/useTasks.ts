@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DerivedTask, Metrics, Task } from '@/types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { DerivedTask, Metrics, Priority, Status, Task } from '@/types';
 import {
   computeAverageROI,
   computePerformanceGrade,
@@ -42,21 +42,50 @@ export function useTasks(): UseTasksState {
 
   function normalizeTasks(input: any[]): Task[] {
     const now = Date.now();
-    return (Array.isArray(input) ? input : []).map((t, idx) => {
-      const created = t.createdAt ? new Date(t.createdAt) : new Date(now - (idx + 1) * 24 * 3600 * 1000);
-      const completed = t.completedAt || (t.status === 'Done' ? new Date(created.getTime() + 24 * 3600 * 1000).toISOString() : undefined);
-      return {
-        id: t.id,
-        title: t.title,
-        revenue: Number(t.revenue) ?? 0,
-        timeTaken: Number(t.timeTaken) > 0 ? Number(t.timeTaken) : 1,
-        priority: t.priority,
-        status: t.status,
-        notes: t.notes,
-        createdAt: created.toISOString(),
-        completedAt: completed,
-      } as Task;
-    });
+    const validPriorities: Priority[] = ['High', 'Medium', 'Low'];
+    const validStatuses: Status[] = ['Todo', 'In Progress', 'Done'];
+    
+    return (Array.isArray(input) ? input : [])
+      .map((t, idx) => {
+        // Validate and generate ID
+        const id = t.id && typeof t.id === 'string' && t.id.trim() ? t.id.trim() : crypto.randomUUID();
+        
+        // Validate title
+        const title = t.title && typeof t.title === 'string' ? t.title.trim() : `Untitled Task ${idx + 1}`;
+        
+        // Validate revenue (must be a valid number, not NaN)
+        const revenueNum = Number(t.revenue);
+        const revenue = !isNaN(revenueNum) && isFinite(revenueNum) && revenueNum >= 0 ? revenueNum : 0;
+        
+        // Validate timeTaken (must be > 0)
+        const timeTakenNum = Number(t.timeTaken);
+        const timeTaken = !isNaN(timeTakenNum) && isFinite(timeTakenNum) && timeTakenNum > 0 ? timeTakenNum : 1;
+        
+        // Validate priority
+        const priority = validPriorities.includes(t.priority) ? t.priority : 'Medium';
+        
+        // Validate status
+        const status = validStatuses.includes(t.status) ? t.status : 'Todo';
+        
+        const created = t.createdAt ? new Date(t.createdAt) : new Date(now - (idx + 1) * 24 * 3600 * 1000);
+        const completed = t.completedAt || (status === 'Done' ? new Date(created.getTime() + 24 * 3600 * 1000).toISOString() : undefined);
+        
+        return {
+          id,
+          title,
+          revenue,
+          timeTaken,
+          priority,
+          status,
+          notes: t.notes && typeof t.notes === 'string' ? t.notes.trim() : undefined,
+          createdAt: created.toISOString(),
+          completedAt: completed,
+        } as Task;
+      })
+      .filter((task, index, self) => {
+        // Remove duplicates by ID (keep first occurrence)
+        return self.findIndex(t => t.id === task.id) === index;
+      });
   }
 
   // Initial load: public JSON -> fallback generated dummy
@@ -69,15 +98,7 @@ export function useTasks(): UseTasksState {
         if (!res.ok) throw new Error(`Failed to load tasks.json (${res.status})`);
         const data = (await res.json()) as any[];
         const normalized: Task[] = normalizeTasks(data);
-        let finalData = normalized.length > 0 ? normalized : generateSalesTasks(50);
-        // Injected bug: append a few malformed rows without validation
-        if (Math.random() < 0.5) {
-          finalData = [
-            ...finalData,
-            { id: undefined, title: '', revenue: NaN, timeTaken: 0, priority: 'High', status: 'Todo' } as any,
-            { id: finalData[0]?.id ?? 'dup-1', title: 'Duplicate ID', revenue: 9999999999, timeTaken: -5, priority: 'Low', status: 'Done' } as any,
-          ];
-        }
+        const finalData = normalized.length > 0 ? normalized : generateSalesTasks(50);
         if (isMounted) setTasks(finalData);
       } catch (e: any) {
         if (isMounted) setError(e?.message ?? 'Failed to load tasks');
