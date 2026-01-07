@@ -1,0 +1,18 @@
+{
+    "sourceFile": "src/context/TasksContext.tsx",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1767802293840,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1767802293840,
+            "name": "Commit-0",
+            "content": "import { createContext, useContext, ReactNode } from 'react';\r\nimport { useTasks } from '@/hooks/useTasks';\r\nimport { DerivedTask, Metrics, Task } from '@/types';\r\n\r\ninterface TasksContextValue {\r\n  tasks: Task[];\r\n  loading: boolean;\r\n  error: string | null;\r\n  derivedSorted: DerivedTask[];\r\n  metrics: Metrics;\r\n  lastDeleted: Task | null;\r\n  addTask: (task: Omit<Task, 'id'> & { id?: string }) => void;\r\n  updateTask: (id: string, patch: Partial<Task>) => void;\r\n  deleteTask: (id: string) => void;\r\n  undoDelete: () => void;\r\n  clearLastDeleted: () => void;\r\n}\r\n\r\nconst TasksContext = createContext<TasksContextValue | undefined>(undefined);\r\n\r\nexport function TasksProvider({ children }: { children: ReactNode }) {\r\n  const value = useTasks();\r\n  return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;\r\n}\r\n\r\nexport function useTasksContext(): TasksContextValue {\r\n  const ctx = useContext(TasksContext);\r\n  if (!ctx) throw new Error('useTasksContext must be used within TasksProvider');\r\n  return ctx as TasksContextValue;\r\n}\r\n\r\n\r\n"
+        }
+    ]
+}

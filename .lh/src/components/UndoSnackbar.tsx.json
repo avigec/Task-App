@@ -1,0 +1,18 @@
+{
+    "sourceFile": "src/components/UndoSnackbar.tsx",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1767802452542,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1767802452542,
+            "name": "Commit-0",
+            "content": "import React from 'react';\r\nimport { Snackbar, Button } from '@mui/material';\r\n\r\ninterface Props {\r\n  open: boolean;\r\n  onClose: () => void;\r\n  onUndo: () => void;\r\n}\r\n\r\nexport default function UndoSnackbar({ open, onClose, onUndo }: Props) {\r\n  const handleClose = (event?: React.SyntheticEvent | Event, reason?: string) => {\r\n    // Only close on timeout or escape key, not on clickaway\r\n    if (reason === 'clickaway') {\r\n      return;\r\n    }\r\n    onClose();\r\n  };\r\n\r\n  const handleUndo = () => {\r\n    onUndo();\r\n    // Close the snackbar after undo\r\n    onClose();\r\n  };\r\n\r\n  return (\r\n    <Snackbar\r\n      open={open}\r\n      onClose={handleClose}\r\n      autoHideDuration={4000}\r\n      message=\"Task deleted\"\r\n      action={<Button color=\"secondary\" size=\"small\" onClick={handleUndo}>Undo</Button>}\r\n      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}\r\n    />\r\n  );\r\n}\r\n\r\n\r\n"
+        }
+    ]
+}
