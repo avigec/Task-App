@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DerivedTask, Metrics, Priority, Status, Task } from '@/types';
 import {
   computeAverageROI,
@@ -34,81 +34,97 @@ const INITIAL_METRICS: Metrics = {
   performanceGrade: 'Needs Improvement',
 };
 
+// Module-level cache to prevent duplicate fetches (even in StrictMode)
+let fetchPromise: Promise<Task[]> | null = null;
+
+function normalizeTasks(input: any[]): Task[] {
+  const now = Date.now();
+  const validPriorities: Priority[] = ['High', 'Medium', 'Low'];
+  const validStatuses: Status[] = ['Todo', 'In Progress', 'Done'];
+  
+  return (Array.isArray(input) ? input : [])
+    .map((t, idx) => {
+      // Validate and generate ID
+      const id = t.id && typeof t.id === 'string' && t.id.trim() ? t.id.trim() : crypto.randomUUID();
+      
+      // Validate title
+      const title = t.title && typeof t.title === 'string' ? t.title.trim() : `Untitled Task ${idx + 1}`;
+      
+      // Validate revenue (must be a valid number, not NaN)
+      const revenueNum = Number(t.revenue);
+      const revenue = !isNaN(revenueNum) && isFinite(revenueNum) && revenueNum >= 0 ? revenueNum : 0;
+      
+      // Validate timeTaken (must be > 0)
+      const timeTakenNum = Number(t.timeTaken);
+      const timeTaken = !isNaN(timeTakenNum) && isFinite(timeTakenNum) && timeTakenNum > 0 ? timeTakenNum : 1;
+      
+      // Validate priority
+      const priority = validPriorities.includes(t.priority) ? t.priority : 'Medium';
+      
+      // Validate status
+      const status = validStatuses.includes(t.status) ? t.status : 'Todo';
+      
+      const created = t.createdAt ? new Date(t.createdAt) : new Date(now - (idx + 1) * 24 * 3600 * 1000);
+      const completed = t.completedAt || (status === 'Done' ? new Date(created.getTime() + 24 * 3600 * 1000).toISOString() : undefined);
+      
+      return {
+        id,
+        title,
+        revenue,
+        timeTaken,
+        priority,
+        status,
+        notes: t.notes && typeof t.notes === 'string' ? t.notes.trim() : undefined,
+        createdAt: created.toISOString(),
+        completedAt: completed,
+      } as Task;
+    })
+    .filter((task, index, self) => {
+      // Remove duplicates by ID (keep first occurrence)
+      return self.findIndex(t => t.id === task.id) === index;
+    });
+}
+
 export function useTasks(): UseTasksState {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastDeleted, setLastDeleted] = useState<Task | null>(null);
 
-  function normalizeTasks(input: any[]): Task[] {
-    const now = Date.now();
-    const validPriorities: Priority[] = ['High', 'Medium', 'Low'];
-    const validStatuses: Status[] = ['Todo', 'In Progress', 'Done'];
-    
-    return (Array.isArray(input) ? input : [])
-      .map((t, idx) => {
-        // Validate and generate ID
-        const id = t.id && typeof t.id === 'string' && t.id.trim() ? t.id.trim() : crypto.randomUUID();
-        
-        // Validate title
-        const title = t.title && typeof t.title === 'string' ? t.title.trim() : `Untitled Task ${idx + 1}`;
-        
-        // Validate revenue (must be a valid number, not NaN)
-        const revenueNum = Number(t.revenue);
-        const revenue = !isNaN(revenueNum) && isFinite(revenueNum) && revenueNum >= 0 ? revenueNum : 0;
-        
-        // Validate timeTaken (must be > 0)
-        const timeTakenNum = Number(t.timeTaken);
-        const timeTaken = !isNaN(timeTakenNum) && isFinite(timeTakenNum) && timeTakenNum > 0 ? timeTakenNum : 1;
-        
-        // Validate priority
-        const priority = validPriorities.includes(t.priority) ? t.priority : 'Medium';
-        
-        // Validate status
-        const status = validStatuses.includes(t.status) ? t.status : 'Todo';
-        
-        const created = t.createdAt ? new Date(t.createdAt) : new Date(now - (idx + 1) * 24 * 3600 * 1000);
-        const completed = t.completedAt || (status === 'Done' ? new Date(created.getTime() + 24 * 3600 * 1000).toISOString() : undefined);
-        
-        return {
-          id,
-          title,
-          revenue,
-          timeTaken,
-          priority,
-          status,
-          notes: t.notes && typeof t.notes === 'string' ? t.notes.trim() : undefined,
-          createdAt: created.toISOString(),
-          completedAt: completed,
-        } as Task;
-      })
-      .filter((task, index, self) => {
-        // Remove duplicates by ID (keep first occurrence)
-        return self.findIndex(t => t.id === task.id) === index;
-      });
-  }
-
   // Initial load: public JSON -> fallback generated dummy
   useEffect(() => {
     let isMounted = true;
-    async function load() {
-      try {
-        console.log('[useTasks] Fetching initial tasks from /tasks.json');
-        const res = await fetch('/tasks.json');
-        if (!res.ok) throw new Error(`Failed to load tasks.json (${res.status})`);
-        const data = (await res.json()) as any[];
-        const normalized: Task[] = normalizeTasks(data);
-        const finalData = normalized.length > 0 ? normalized : generateSalesTasks(50);
-        if (isMounted) setTasks(finalData);
-      } catch (e: any) {
-        if (isMounted) setError(e?.message ?? 'Failed to load tasks');
-      } finally {
+    
+    // Use cached promise if it exists to prevent duplicate fetches in StrictMode
+    if (!fetchPromise) {
+      fetchPromise = (async () => {
+        try {
+          console.log('[useTasks] Fetching initial tasks from /tasks.json');
+          const res = await fetch('/tasks.json');
+          if (!res.ok) throw new Error(`Failed to load tasks.json (${res.status})`);
+          const data = (await res.json()) as any[];
+          const normalized: Task[] = normalizeTasks(data);
+          return normalized.length > 0 ? normalized : generateSalesTasks(50);
+        } catch (e: any) {
+          throw e;
+        }
+      })();
+    }
+    
+    fetchPromise
+      .then((finalData) => {
         if (isMounted) {
+          setTasks(finalData);
           setLoading(false);
         }
-      }
-    }
-    load();
+      })
+      .catch((e: any) => {
+        if (isMounted) {
+          setError(e?.message ?? 'Failed to load tasks');
+          setLoading(false);
+        }
+      });
+    
     return () => {
       isMounted = false;
     };
